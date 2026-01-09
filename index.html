@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Editor de Voz - Grabación y Edición</title>
+    <title>Editor de Voz - Grabación y Edición Mejorada</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * {
@@ -177,15 +177,86 @@
         .waveform-container {
             background-color: rgba(0, 0, 0, 0.2);
             border-radius: 10px;
-            height: 150px;
+            height: 200px;
             margin-bottom: 25px;
             position: relative;
             overflow: hidden;
+            cursor: pointer;
         }
         
         .waveform {
             width: 100%;
             height: 100%;
+        }
+        
+        .trim-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        
+        .trim-handle {
+            position: absolute;
+            top: 0;
+            width: 4px;
+            height: 100%;
+            background-color: rgba(255, 65, 108, 0.8);
+            cursor: ew-resize;
+            pointer-events: auto;
+            z-index: 10;
+        }
+        
+        .trim-handle::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -4px;
+            width: 12px;
+            height: 100%;
+        }
+        
+        .trim-handle.start {
+            left: 0%;
+            border-right: 2px solid #ff416c;
+        }
+        
+        .trim-handle.end {
+            left: 100%;
+            border-left: 2px solid #ff416c;
+        }
+        
+        .trim-handle .handle-label {
+            position: absolute;
+            top: -25px;
+            left: -15px;
+            background-color: rgba(255, 65, 108, 0.9);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+        
+        .trim-area {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            background-color: rgba(0, 198, 255, 0.2);
+            border-left: 2px solid #00c6ff;
+            border-right: 2px solid #00c6ff;
+            pointer-events: none;
+        }
+        
+        .trim-mask {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            pointer-events: none;
         }
         
         .waveform-placeholder {
@@ -207,6 +278,55 @@
             margin-bottom: 20px;
             background-color: rgba(0, 0, 0, 0.3);
             border-radius: 10px;
+        }
+        
+        .trim-controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            background-color: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 10px;
+        }
+        
+        .trim-time {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 120px;
+        }
+        
+        .trim-time-label {
+            font-size: 12px;
+            opacity: 0.8;
+            margin-bottom: 5px;
+        }
+        
+        .trim-time-value {
+            font-family: monospace;
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+        
+        .trim-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .trim-btn {
+            padding: 8px 15px;
+            background-color: rgba(0, 198, 255, 0.2);
+            border: 1px solid #00c6ff;
+            color: #00c6ff;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        
+        .trim-btn:hover {
+            background-color: rgba(0, 198, 255, 0.4);
         }
         
         .slider-container {
@@ -362,6 +482,55 @@
             border-left: 4px solid #3498db;
             color: #3498db;
         }
+        
+        .effects-preview {
+            background-color: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+        }
+        
+        .effects-preview h4 {
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .preview-values {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .preview-value {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 80px;
+        }
+        
+        .preview-label {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+        
+        .preview-number {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #00c6ff;
+        }
+        
+        .playhead {
+            position: absolute;
+            top: 0;
+            width: 2px;
+            height: 100%;
+            background-color: #ffffff;
+            z-index: 5;
+            pointer-events: none;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -384,11 +553,36 @@
                     <span>Grabando...</span>
                 </div>
                 
-                <div class="waveform-container">
+                <div class="waveform-container" id="waveformContainer">
                     <canvas id="waveform" class="waveform"></canvas>
+                    <div class="trim-overlay" id="trimOverlay">
+                        <!-- Las áreas de recorte se generan dinámicamente -->
+                        <div class="playhead" id="playhead"></div>
+                    </div>
                     <div id="waveformPlaceholder" class="waveform-placeholder">
                         <i class="fas fa-waveform-lines"></i>
                         <p>Visualización de audio aparecerá aquí</p>
+                    </div>
+                </div>
+                
+                <div class="trim-controls">
+                    <div class="trim-time">
+                        <div class="trim-time-label">INICIO</div>
+                        <div class="trim-time-value" id="trimStartTime">0:00</div>
+                    </div>
+                    
+                    <div class="trim-buttons">
+                        <button class="trim-btn" id="applyTrimBtn">
+                            <i class="fas fa-cut"></i> Aplicar Recorte
+                        </button>
+                        <button class="trim-btn" id="resetTrimBtn">
+                            <i class="fas fa-undo"></i> Restablecer
+                        </button>
+                    </div>
+                    
+                    <div class="trim-time">
+                        <div class="trim-time-label">FIN</div>
+                        <div class="trim-time-value" id="trimEndTime">0:00</div>
                     </div>
                 </div>
                 
@@ -415,8 +609,8 @@
                         <li>Asegúrate de tener un micrófono conectado y permitir el acceso en tu navegador</li>
                         <li>Haz clic en "Iniciar Grabación" para comenzar a grabar tu voz</li>
                         <li>Puedes pausar y reanudar la reproducción del audio grabado</li>
-                        <li>Utiliza los controles de edición para mejorar la calidad del audio</li>
-                        <li><strong>Nota:</strong> Si el audio no se reproduce, intenta usar Chrome o Edge</li>
+                        <li>Arrastra los controles rojos en la forma de onda para recortar el audio</li>
+                        <li>Usa los controles de edición para mejorar la calidad del audio</li>
                     </ul>
                 </div>
             </div>
@@ -433,20 +627,26 @@
                     <input type="range" min="0" max="200" value="100" class="slider" id="volumeSlider">
                 </div>
                 
-                <div class="slider-container">
-                    <div class="slider-label">
-                        <span><i class="fas fa-cut"></i> Recorte (inicio)</span>
-                        <span id="trimStartValue">0%</span>
+                <div class="effects-preview">
+                    <h4><i class="fas fa-sliders-h"></i> Previsualización de Efectos</h4>
+                    <div class="preview-values">
+                        <div class="preview-value">
+                            <div class="preview-label">Graves</div>
+                            <div class="preview-number" id="previewBass">0dB</div>
+                        </div>
+                        <div class="preview-value">
+                            <div class="preview-label">Medios</div>
+                            <div class="preview-number" id="previewMid">0dB</div>
+                        </div>
+                        <div class="preview-value">
+                            <div class="preview-label">Agudos</div>
+                            <div class="preview-number" id="previewTreble">0dB</div>
+                        </div>
+                        <div class="preview-value">
+                            <div class="preview-label">Ruido</div>
+                            <div class="preview-number" id="previewNoise">0%</div>
+                        </div>
                     </div>
-                    <input type="range" min="0" max="100" value="0" class="slider" id="trimStartSlider">
-                </div>
-                
-                <div class="slider-container">
-                    <div class="slider-label">
-                        <span><i class="fas fa-cut"></i> Recorte (fin)</span>
-                        <span id="trimEndValue">100%</span>
-                    </div>
-                    <input type="range" min="0" max="100" value="100" class="slider" id="trimEndSlider">
                 </div>
                 
                 <h3 style="margin-top: 25px; margin-bottom: 15px;"><i class="fas fa-sliders-h"></i> Filtros de Mejora</h3>
@@ -474,7 +674,7 @@
                         <i class="fas fa-magic"></i> Aplicar Efectos
                     </button>
                     <button id="resetEffects" class="btn btn-secondary">
-                        <i class="fas fa-undo"></i> Restablecer
+                        <i class="fas fa-undo"></i> Restablecer Efectos
                     </button>
                     <button id="downloadAudio" class="btn btn-primary" disabled>
                         <i class="fas fa-download"></i> Descargar Audio
@@ -515,6 +715,15 @@
         let bufferLength;
         let animationId;
         
+        // Variables para edición
+        let trimStart = 0; // Porcentaje
+        let trimEnd = 100; // Porcentaje
+        let audioDuration = 0;
+        let isDraggingTrimHandle = false;
+        let currentDraggingHandle = null;
+        let trimStartTime = 0;
+        let trimEndTime = 0;
+        
         // Elementos DOM
         const startRecordingBtn = document.getElementById('startRecording');
         const stopRecordingBtn = document.getElementById('stopRecording');
@@ -523,13 +732,12 @@
         const recordingStatus = document.getElementById('recordingStatus');
         const timerElement = document.getElementById('timer');
         const waveform = document.getElementById('waveform');
+        const waveformContainer = document.getElementById('waveformContainer');
         const waveformPlaceholder = document.getElementById('waveformPlaceholder');
+        const trimOverlay = document.getElementById('trimOverlay');
+        const playhead = document.getElementById('playhead');
         const volumeSlider = document.getElementById('volumeSlider');
         const volumeValue = document.getElementById('volumeValue');
-        const trimStartSlider = document.getElementById('trimStartSlider');
-        const trimStartValue = document.getElementById('trimStartValue');
-        const trimEndSlider = document.getElementById('trimEndSlider');
-        const trimEndValue = document.getElementById('trimEndValue');
         const bassSlider = document.getElementById('bassSlider');
         const midSlider = document.getElementById('midSlider');
         const trebleSlider = document.getElementById('trebleSlider');
@@ -539,6 +747,16 @@
         const downloadAudioBtn = document.getElementById('downloadAudio');
         const recordingsList = document.getElementById('recordingsList');
         const statusMessage = document.getElementById('statusMessage');
+        const applyTrimBtn = document.getElementById('applyTrimBtn');
+        const resetTrimBtn = document.getElementById('resetTrimBtn');
+        const trimStartTimeDisplay = document.getElementById('trimStartTime');
+        const trimEndTimeDisplay = document.getElementById('trimEndTime');
+        
+        // Elementos de previsualización de efectos
+        const previewBass = document.getElementById('previewBass');
+        const previewMid = document.getElementById('previewMid');
+        const previewTreble = document.getElementById('previewTreble');
+        const previewNoise = document.getElementById('previewNoise');
         
         // Inicializar canvas para visualización de audio
         canvasContext = waveform.getContext('2d');
@@ -553,12 +771,21 @@
             }
         });
         
-        trimStartSlider.addEventListener('input', () => {
-            trimStartValue.textContent = `${trimStartSlider.value}%`;
+        // Actualizar previsualización de efectos
+        bassSlider.addEventListener('input', () => {
+            previewBass.textContent = `${bassSlider.value}dB`;
         });
         
-        trimEndSlider.addEventListener('input', () => {
-            trimEndValue.textContent = `${trimEndSlider.value}%`;
+        midSlider.addEventListener('input', () => {
+            previewMid.textContent = `${midSlider.value}dB`;
+        });
+        
+        trebleSlider.addEventListener('input', () => {
+            previewTreble.textContent = `${trebleSlider.value}dB`;
+        });
+        
+        noiseReductionSlider.addEventListener('input', () => {
+            previewNoise.textContent = `${noiseReductionSlider.value}%`;
         });
         
         // Mostrar mensaje de estado
@@ -650,6 +877,11 @@
                     
                     // Configurar elemento de audio
                     audioElement.src = audioUrl;
+                    audioElement.onloadedmetadata = () => {
+                        audioDuration = audioElement.duration;
+                        updateTrimTimeDisplays();
+                        createTrimHandles();
+                    };
                     
                     // Habilitar botones
                     playRecordingBtn.disabled = false;
@@ -727,6 +959,39 @@
                 return;
             }
             
+            // Aplicar recorte si está configurado
+            if (trimStart > 0 || trimEnd < 100) {
+                const startTime = (trimStart / 100) * audioDuration;
+                const endTime = (trimEnd / 100) * audioDuration;
+                
+                audioElement.currentTime = startTime;
+                
+                // Configurar evento para detener en el tiempo de fin
+                const onTimeUpdate = () => {
+                    if (audioElement.currentTime >= endTime) {
+                        audioElement.pause();
+                        audioElement.currentTime = startTime;
+                        audioElement.removeEventListener('timeupdate', onTimeUpdate);
+                        playRecordingBtn.disabled = false;
+                        pauseRecordingBtn.disabled = true;
+                        isPlaying = false;
+                        
+                        // Detener animación
+                        if (animationId) {
+                            cancelAnimationFrame(animationId);
+                        }
+                        
+                        playhead.style.display = 'none';
+                    } else {
+                        // Actualizar posición del playhead
+                        const playheadPosition = ((audioElement.currentTime - startTime) / (endTime - startTime)) * 100;
+                        playhead.style.left = `${playheadPosition}%`;
+                    }
+                };
+                
+                audioElement.addEventListener('timeupdate', onTimeUpdate);
+            }
+            
             // Verificar si el audio se puede reproducir
             const playPromise = audioElement.play();
             
@@ -736,6 +1001,21 @@
                     playRecordingBtn.disabled = true;
                     pauseRecordingBtn.disabled = false;
                     isPlaying = true;
+                    
+                    // Mostrar y actualizar playhead
+                    playhead.style.display = 'block';
+                    if (trimStart > 0 || trimEnd < 100) {
+                        playhead.style.left = '0%';
+                    } else {
+                        // Actualizar posición del playhead durante reproducción normal
+                        const updatePlayhead = () => {
+                            if (!isPlaying) return;
+                            const progress = (audioElement.currentTime / audioDuration) * 100;
+                            playhead.style.left = `${progress}%`;
+                            requestAnimationFrame(updatePlayhead);
+                        };
+                        updatePlayhead();
+                    }
                     
                     // Iniciar visualización durante la reproducción
                     if (audioContext) {
@@ -749,27 +1029,12 @@
                     // Intentar solucionar problemas de reproducción
                     if (error.name === 'NotSupportedError') {
                         showStatusMessage('Formato de audio no compatible. Intentando convertir...', 'error');
-                        convertAndPlayAudio();
                     } else {
                         showStatusMessage('Error al reproducir el audio: ' + error.message, 'error');
                     }
                 });
             }
         });
-        
-        // Intentar convertir y reproducir audio (para navegadores que no soportan webm)
-        function convertAndPlayAudio() {
-            if (!currentAudioBlob) return;
-            
-            showStatusMessage('Convertiendo audio a formato compatible...', 'info');
-            
-            // En una implementación real, aquí podrías convertir el audio usando una biblioteca como FFmpeg.wasm
-            // Para esta demo, mostraremos un mensaje y ofreceremos descargar el audio
-            showStatusMessage('No se pudo reproducir el audio directamente. Puedes descargarlo y reproducirlo con otro reproductor.', 'error');
-            
-            // Habilitar descarga
-            downloadAudioBtn.disabled = false;
-        }
         
         // Pausar audio
         pauseRecordingBtn.addEventListener('click', () => {
@@ -782,6 +1047,9 @@
             if (animationId) {
                 cancelAnimationFrame(animationId);
             }
+            
+            // Ocultar playhead
+            playhead.style.display = 'none';
             
             showStatusMessage('Audio pausado', 'info');
         });
@@ -912,6 +1180,139 @@
             canvasContext.stroke();
         }
         
+        // Crear controles de recorte visual
+        function createTrimHandles() {
+            // Limpiar controles anteriores
+            trimOverlay.innerHTML = '<div class="playhead" id="playhead"></div>';
+            
+            // Crear máscara izquierda (área a recortar al inicio)
+            const leftMask = document.createElement('div');
+            leftMask.className = 'trim-mask';
+            leftMask.style.left = '0';
+            leftMask.style.width = `${trimStart}%`;
+            trimOverlay.appendChild(leftMask);
+            
+            // Crear área de recorte (área que se mantendrá)
+            const trimArea = document.createElement('div');
+            trimArea.className = 'trim-area';
+            trimArea.style.left = `${trimStart}%`;
+            trimArea.style.width = `${trimEnd - trimStart}%`;
+            trimOverlay.appendChild(trimArea);
+            
+            // Crear máscara derecha (área a recortar al final)
+            const rightMask = document.createElement('div');
+            rightMask.className = 'trim-mask';
+            rightMask.style.left = `${trimEnd}%`;
+            rightMask.style.width = `${100 - trimEnd}%`;
+            trimOverlay.appendChild(rightMask);
+            
+            // Crear control de inicio
+            const startHandle = document.createElement('div');
+            startHandle.className = 'trim-handle start';
+            startHandle.style.left = `${trimStart}%`;
+            startHandle.innerHTML = '<div class="handle-label">INICIO</div>';
+            trimOverlay.appendChild(startHandle);
+            
+            // Crear control de fin
+            const endHandle = document.createElement('div');
+            endHandle.className = 'trim-handle end';
+            endHandle.style.left = `${trimEnd}%`;
+            endHandle.innerHTML = '<div class="handle-label">FIN</div>';
+            trimOverlay.appendChild(endHandle);
+            
+            // Agregar eventos para arrastrar los controles
+            startHandle.addEventListener('mousedown', (e) => {
+                isDraggingTrimHandle = true;
+                currentDraggingHandle = 'start';
+                e.preventDefault();
+            });
+            
+            endHandle.addEventListener('mousedown', (e) => {
+                isDraggingTrimHandle = true;
+                currentDraggingHandle = 'end';
+                e.preventDefault();
+            });
+            
+            // Actualizar displays de tiempo
+            updateTrimTimeDisplays();
+        }
+        
+        // Actualizar displays de tiempo de recorte
+        function updateTrimTimeDisplays() {
+            if (audioDuration > 0) {
+                trimStartTime = (trimStart / 100) * audioDuration;
+                trimEndTime = (trimEnd / 100) * audioDuration;
+                
+                trimStartTimeDisplay.textContent = formatTime(trimStartTime);
+                trimEndTimeDisplay.textContent = formatTime(trimEndTime);
+            }
+        }
+        
+        // Formatear tiempo en minutos:segundos
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+        
+        // Aplicar recorte
+        applyTrimBtn.addEventListener('click', () => {
+            if (!currentAudioBlob) {
+                showStatusMessage('No hay audio para recortar. Graba algo primero.', 'error');
+                return;
+            }
+            
+            if (trimStart >= trimEnd) {
+                showStatusMessage('El inicio del recorte debe ser menor que el fin.', 'error');
+                return;
+            }
+            
+            showStatusMessage(`Audio recortado de ${formatTime(trimStartTime)} a ${formatTime(trimEndTime)}`, 'success');
+            
+            // En una aplicación real, aquí procesaríamos el audio para recortarlo
+            // Para esta demo, solo actualizamos la visualización
+        });
+        
+        // Restablecer recorte
+        resetTrimBtn.addEventListener('click', () => {
+            trimStart = 0;
+            trimEnd = 100;
+            createTrimHandles();
+            showStatusMessage('Recorte restablecido', 'info');
+        });
+        
+        // Eventos para arrastrar controles de recorte
+        waveformContainer.addEventListener('mousemove', (e) => {
+            if (!isDraggingTrimHandle || !currentDraggingHandle) return;
+            
+            const rect = waveformContainer.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const percentage = (x / rect.width) * 100;
+            
+            // Limitar entre 0 y 100
+            const clampedPercentage = Math.max(0, Math.min(100, percentage));
+            
+            if (currentDraggingHandle === 'start') {
+                // El control de inicio no puede pasar el de fin
+                trimStart = Math.min(clampedPercentage, trimEnd - 1);
+            } else {
+                // El control de fin no puede pasar el de inicio
+                trimEnd = Math.max(clampedPercentage, trimStart + 1);
+            }
+            
+            createTrimHandles();
+        });
+        
+        waveformContainer.addEventListener('mouseup', () => {
+            isDraggingTrimHandle = false;
+            currentDraggingHandle = null;
+        });
+        
+        waveformContainer.addEventListener('mouseleave', () => {
+            isDraggingTrimHandle = false;
+            currentDraggingHandle = null;
+        });
+        
         // Aplicar efectos de audio
         applyEffectsBtn.addEventListener('click', () => {
             if (!currentAudioBlob) {
@@ -938,16 +1339,16 @@
             volumeValue.textContent = '100%';
             audioElement.volume = 1.0;
             
-            trimStartSlider.value = 0;
-            trimStartValue.textContent = '0%';
-            
-            trimEndSlider.value = 100;
-            trimEndValue.textContent = '100%';
-            
             bassSlider.value = 0;
             midSlider.value = 0;
             trebleSlider.value = 0;
             noiseReductionSlider.value = 0;
+            
+            // Actualizar previsualización
+            previewBass.textContent = '0dB';
+            previewMid.textContent = '0dB';
+            previewTreble.textContent = '0dB';
+            previewNoise.textContent = '0%';
             
             showStatusMessage('Todos los efectos han sido restablecidos a sus valores predeterminados.', 'success');
         });
@@ -1055,6 +1456,9 @@
                 cancelAnimationFrame(animationId);
             }
             
+            // Ocultar playhead
+            playhead.style.display = 'none';
+            
             showStatusMessage('Reproducción finalizada', 'info');
         });
         
@@ -1088,6 +1492,7 @@
             
             if (audioElement.src) {
                 drawStaticWaveform();
+                createTrimHandles();
             }
         });
         
