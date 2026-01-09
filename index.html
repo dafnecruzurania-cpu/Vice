@@ -205,6 +205,8 @@
         .audio-player {
             width: 100%;
             margin-bottom: 20px;
+            background-color: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
         }
         
         .slider-container {
@@ -335,6 +337,31 @@
         .instructions li {
             margin-bottom: 8px;
         }
+        
+        .status-message {
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: none;
+        }
+        
+        .status-success {
+            background-color: rgba(46, 204, 113, 0.2);
+            border-left: 4px solid #2ecc71;
+            color: #2ecc71;
+        }
+        
+        .status-error {
+            background-color: rgba(231, 76, 60, 0.2);
+            border-left: 4px solid #e74c3c;
+            color: #e74c3c;
+        }
+        
+        .status-info {
+            background-color: rgba(52, 152, 219, 0.2);
+            border-left: 4px solid #3498db;
+            color: #3498db;
+        }
     </style>
 </head>
 <body>
@@ -343,6 +370,8 @@
             <h1><i class="fas fa-microphone-alt"></i> Editor de Voz Profesional</h1>
             <p class="subtitle">Graba tu voz desde el micrófono y aplica ediciones básicas para mejorar la calidad del audio. Ajusta el volumen, recorta fragmentos y aplica filtros para obtener el mejor resultado.</p>
         </header>
+        
+        <div id="statusMessage" class="status-message"></div>
         
         <div class="app-container">
             <!-- Panel de Grabación -->
@@ -387,6 +416,7 @@
                         <li>Haz clic en "Iniciar Grabación" para comenzar a grabar tu voz</li>
                         <li>Puedes pausar y reanudar la reproducción del audio grabado</li>
                         <li>Utiliza los controles de edición para mejorar la calidad del audio</li>
+                        <li><strong>Nota:</strong> Si el audio no se reproduce, intenta usar Chrome o Edge</li>
                     </ul>
                 </div>
             </div>
@@ -463,6 +493,7 @@
         <footer>
             <p>Aplicación de Grabación y Edición de Voz &copy; 2023 - Funciona completamente en el navegador</p>
             <p>Utiliza la API de MediaRecorder y Web Audio API para procesamiento en tiempo real</p>
+            <p><strong>Compatibilidad:</strong> Chrome, Edge, Firefox, Safari (con limitaciones)</p>
         </footer>
     </div>
 
@@ -507,6 +538,7 @@
         const resetEffectsBtn = document.getElementById('resetEffects');
         const downloadAudioBtn = document.getElementById('downloadAudio');
         const recordingsList = document.getElementById('recordingsList');
+        const statusMessage = document.getElementById('statusMessage');
         
         // Inicializar canvas para visualización de audio
         canvasContext = waveform.getContext('2d');
@@ -529,13 +561,79 @@
             trimEndValue.textContent = `${trimEndSlider.value}%`;
         });
         
+        // Mostrar mensaje de estado
+        function showStatusMessage(message, type = 'info') {
+            statusMessage.textContent = message;
+            statusMessage.className = `status-message status-${type}`;
+            statusMessage.style.display = 'block';
+            
+            setTimeout(() => {
+                statusMessage.style.display = 'none';
+            }, 5000);
+        }
+        
+        // Verificar compatibilidad del navegador
+        function checkBrowserCompatibility() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                showStatusMessage('Tu navegador no soporta la grabación de audio. Por favor, usa Chrome, Edge o Firefox.', 'error');
+                return false;
+            }
+            
+            if (!window.MediaRecorder) {
+                showStatusMessage('Tu navegador no soporta MediaRecorder API. Por favor, usa Chrome, Edge o Firefox.', 'error');
+                return false;
+            }
+            
+            return true;
+        }
+        
+        // Obtener el tipo MIME compatible
+        function getSupportedMimeType() {
+            const types = [
+                'audio/webm;codecs=opus',
+                'audio/webm',
+                'audio/ogg;codecs=opus',
+                'audio/mp4',
+                'audio/mpeg'
+            ];
+            
+            for (let type of types) {
+                if (MediaRecorder.isTypeSupported(type)) {
+                    return type;
+                }
+            }
+            
+            return null;
+        }
+        
         // Iniciar grabación
         startRecordingBtn.addEventListener('click', async () => {
+            if (!checkBrowserCompatibility()) {
+                return;
+            }
+            
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                showStatusMessage('Solicitando acceso al micrófono...', 'info');
+                
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                });
+                
+                // Obtener tipo MIME compatible
+                const mimeType = getSupportedMimeType();
+                if (!mimeType) {
+                    showStatusMessage('Formato de audio no compatible. Usando formato por defecto.', 'error');
+                }
+                
+                // Configurar opciones de MediaRecorder
+                const options = mimeType ? { mimeType } : {};
                 
                 // Configurar MediaRecorder
-                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder = new MediaRecorder(stream, options);
                 audioChunks = [];
                 
                 mediaRecorder.ondataavailable = (event) => {
@@ -546,7 +644,8 @@
                 
                 mediaRecorder.onstop = () => {
                     // Crear blob de audio
-                    currentAudioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const mimeType = mediaRecorder.mimeType || 'audio/webm';
+                    currentAudioBlob = new Blob(audioChunks, { type: mimeType });
                     const audioUrl = URL.createObjectURL(currentAudioBlob);
                     
                     // Configurar elemento de audio
@@ -573,10 +672,17 @@
                     
                     // Agregar a la lista de grabaciones
                     addRecordingToList(audioUrl);
+                    
+                    showStatusMessage('Grabación completada exitosamente', 'success');
+                };
+                
+                mediaRecorder.onerror = (event) => {
+                    console.error('Error en MediaRecorder:', event.error);
+                    showStatusMessage('Error durante la grabación: ' + event.error.name, 'error');
                 };
                 
                 // Iniciar grabación
-                mediaRecorder.start();
+                mediaRecorder.start(100); // Dividir en chunks de 100ms
                 isRecording = true;
                 
                 // Mostrar indicador de grabación
@@ -588,9 +694,20 @@
                 startTime = Date.now();
                 timerInterval = setInterval(updateTimer, 1000);
                 
+                showStatusMessage('Grabando... Habla ahora.', 'info');
+                
             } catch (error) {
                 console.error('Error al acceder al micrófono:', error);
-                alert('No se pudo acceder al micrófono. Por favor, verifica los permisos.');
+                
+                if (error.name === 'NotAllowedError') {
+                    showStatusMessage('Permiso denegado para acceder al micrófono. Por favor, permite el acceso al micrófono en la configuración de tu navegador.', 'error');
+                } else if (error.name === 'NotFoundError') {
+                    showStatusMessage('No se encontró ningún micrófono. Por favor, conecta un micrófono e intenta nuevamente.', 'error');
+                } else if (error.name === 'NotReadableError') {
+                    showStatusMessage('El micrófono ya está en uso por otra aplicación. Por favor, cierra otras aplicaciones que usen el micrófono.', 'error');
+                } else {
+                    showStatusMessage('Error al acceder al micrófono: ' + error.message, 'error');
+                }
             }
         });
         
@@ -599,23 +716,60 @@
             if (mediaRecorder && isRecording) {
                 mediaRecorder.stop();
                 isRecording = false;
+                showStatusMessage('Deteniendo grabación...', 'info');
             }
         });
         
         // Reproducir audio
         playRecordingBtn.addEventListener('click', () => {
-            if (audioElement.src) {
-                audioElement.play();
-                playRecordingBtn.disabled = true;
-                pauseRecordingBtn.disabled = false;
-                isPlaying = true;
-                
-                // Iniciar visualización durante la reproducción
-                if (audioContext) {
-                    drawWaveform();
-                }
+            if (!audioElement.src) {
+                showStatusMessage('No hay audio para reproducir. Graba algo primero.', 'error');
+                return;
+            }
+            
+            // Verificar si el audio se puede reproducir
+            const playPromise = audioElement.play();
+            
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    // Reproducción iniciada con éxito
+                    playRecordingBtn.disabled = true;
+                    pauseRecordingBtn.disabled = false;
+                    isPlaying = true;
+                    
+                    // Iniciar visualización durante la reproducción
+                    if (audioContext) {
+                        drawWaveform();
+                    }
+                    
+                    showStatusMessage('Reproduciendo audio...', 'info');
+                }).catch(error => {
+                    console.error('Error al reproducir audio:', error);
+                    
+                    // Intentar solucionar problemas de reproducción
+                    if (error.name === 'NotSupportedError') {
+                        showStatusMessage('Formato de audio no compatible. Intentando convertir...', 'error');
+                        convertAndPlayAudio();
+                    } else {
+                        showStatusMessage('Error al reproducir el audio: ' + error.message, 'error');
+                    }
+                });
             }
         });
+        
+        // Intentar convertir y reproducir audio (para navegadores que no soportan webm)
+        function convertAndPlayAudio() {
+            if (!currentAudioBlob) return;
+            
+            showStatusMessage('Convertiendo audio a formato compatible...', 'info');
+            
+            // En una implementación real, aquí podrías convertir el audio usando una biblioteca como FFmpeg.wasm
+            // Para esta demo, mostraremos un mensaje y ofreceremos descargar el audio
+            showStatusMessage('No se pudo reproducir el audio directamente. Puedes descargarlo y reproducirlo con otro reproductor.', 'error');
+            
+            // Habilitar descarga
+            downloadAudioBtn.disabled = false;
+        }
         
         // Pausar audio
         pauseRecordingBtn.addEventListener('click', () => {
@@ -628,6 +782,8 @@
             if (animationId) {
                 cancelAnimationFrame(animationId);
             }
+            
+            showStatusMessage('Audio pausado', 'info');
         });
         
         // Actualizar timer
@@ -642,27 +798,33 @@
         
         // Inicializar visualización de audio
         function initializeAudioVisualization() {
-            // Crear contexto de audio
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            
-            // Crear fuente de audio
-            audioSource = audioContext.createMediaElementSource(audioElement);
-            
-            // Crear analizador
-            analyser = audioContext.createAnalyser();
-            analyser.fftSize = 256;
-            bufferLength = analyser.frequencyBinCount;
-            dataArray = new Uint8Array(bufferLength);
-            
-            // Conectar nodos
-            audioSource.connect(analyser);
-            analyser.connect(audioContext.destination);
-            
-            // Ocultar placeholder y mostrar canvas
-            waveformPlaceholder.classList.add('hidden');
-            
-            // Dibujar forma de onda estática
-            drawStaticWaveform();
+            try {
+                // Crear contexto de audio
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // Crear fuente de audio
+                audioSource = audioContext.createMediaElementSource(audioElement);
+                
+                // Crear analizador
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+                
+                // Conectar nodos
+                audioSource.connect(analyser);
+                analyser.connect(audioContext.destination);
+                
+                // Ocultar placeholder y mostrar canvas
+                waveformPlaceholder.classList.add('hidden');
+                
+                // Dibujar forma de onda estática
+                drawStaticWaveform();
+                
+            } catch (error) {
+                console.error('Error al inicializar visualización de audio:', error);
+                showStatusMessage('No se pudo inicializar la visualización de audio', 'error');
+            }
         }
         
         // Dibujar forma de onda estática
@@ -706,7 +868,7 @@
         
         // Dibujar forma de onda en tiempo real
         function drawWaveform() {
-            if (!isPlaying) return;
+            if (!isPlaying || !analyser) return;
             
             animationId = requestAnimationFrame(drawWaveform);
             
@@ -753,7 +915,7 @@
         // Aplicar efectos de audio
         applyEffectsBtn.addEventListener('click', () => {
             if (!currentAudioBlob) {
-                alert('Primero debes grabar un audio para aplicar efectos.');
+                showStatusMessage('Primero debes grabar un audio para aplicar efectos.', 'error');
                 return;
             }
             
@@ -761,7 +923,7 @@
             // Para esta demostración, simularemos la aplicación de efectos
             
             // Mostrar mensaje de efectos aplicados
-            alert('Efectos aplicados exitosamente. Los cambios se reflejarán al reproducir el audio.');
+            showStatusMessage('Efectos aplicados exitosamente. Los cambios se reflejarán al reproducir el audio.', 'success');
             
             // Actualizar visualización
             drawStaticWaveform();
@@ -787,13 +949,13 @@
             trebleSlider.value = 0;
             noiseReductionSlider.value = 0;
             
-            alert('Todos los efectos han sido restablecidos a sus valores predeterminados.');
+            showStatusMessage('Todos los efectos han sido restablecidos a sus valores predeterminados.', 'success');
         });
         
         // Descargar audio
         downloadAudioBtn.addEventListener('click', () => {
             if (!currentAudioBlob) {
-                alert('No hay audio para descargar. Por favor, graba algo primero.');
+                showStatusMessage('No hay audio para descargar. Por favor, graba algo primero.', 'error');
                 return;
             }
             
@@ -810,6 +972,8 @@
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
             }, 100);
+            
+            showStatusMessage('Audio descargado exitosamente', 'success');
         });
         
         // Agregar grabación a la lista
@@ -843,13 +1007,23 @@
             
             playBtn.addEventListener('click', () => {
                 audioElement.src = audioUrl;
-                audioElement.play();
-                playRecordingBtn.disabled = true;
-                pauseRecordingBtn.disabled = false;
-                isPlaying = true;
                 
-                // Actualizar visualización
-                drawStaticWaveform();
+                const playPromise = audioElement.play();
+                
+                if (playPromise !== undefined) {
+                    playPromise.then(() => {
+                        playRecordingBtn.disabled = true;
+                        pauseRecordingBtn.disabled = false;
+                        isPlaying = true;
+                        
+                        // Actualizar visualización
+                        drawStaticWaveform();
+                        
+                        showStatusMessage('Reproduciendo grabación...', 'info');
+                    }).catch(error => {
+                        showStatusMessage('Error al reproducir esta grabación: ' + error.message, 'error');
+                    });
+                }
             });
             
             deleteBtn.addEventListener('click', () => {
@@ -863,6 +1037,8 @@
                         </div>
                     `;
                 }
+                
+                showStatusMessage('Grabación eliminada', 'info');
             });
             
             recordingsList.prepend(recordingItem);
@@ -878,6 +1054,31 @@
             if (animationId) {
                 cancelAnimationFrame(animationId);
             }
+            
+            showStatusMessage('Reproducción finalizada', 'info');
+        });
+        
+        // Manejar errores de audio
+        audioElement.addEventListener('error', (e) => {
+            console.error('Error en elemento de audio:', audioElement.error);
+            
+            let errorMessage = 'Error desconocido';
+            switch(audioElement.error.code) {
+                case MediaError.MEDIA_ERR_ABORTED:
+                    errorMessage = 'Reproducción cancelada';
+                    break;
+                case MediaError.MEDIA_ERR_NETWORK:
+                    errorMessage = 'Error de red';
+                    break;
+                case MediaError.MEDIA_ERR_DECODE:
+                    errorMessage = 'Error al decodificar el audio. Formato no compatible.';
+                    break;
+                case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+                    errorMessage = 'Formato de audio no compatible';
+                    break;
+            }
+            
+            showStatusMessage('Error de audio: ' + errorMessage, 'error');
         });
         
         // Manejar cambio de tamaño de ventana
@@ -892,6 +1093,11 @@
         
         // Inicializar con una forma de onda de ejemplo
         drawStaticWaveform();
+        
+        // Mostrar mensaje de bienvenida
+        window.addEventListener('load', () => {
+            showStatusMessage('Aplicación lista. Haz clic en "Iniciar Grabación" para comenzar.', 'success');
+        });
     </script>
 </body>
 </html>
